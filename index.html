@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>GC Codes</title>
+  
+  <!-- Tailwind CSS for styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom Brand Tailwind Theme Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brandGreen: '#5CFF5C',
+            brandBlue: '#0000FF',
+            darkBg: '#090d16',
+            panelBg: '#111827',
+            cardBg: '#1f2937',
+            borderColor: '#374151'
+          }
+        }
+      }
+    }
+  </script>
+  <!-- JsBarcode for rendering linear barcodes -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <!-- qrcodejs for rendering QR codes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- html5-qrcode for live camera barcode scanning -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      background-color: #090d16;
+      color: #f3f4f6;
+    }
+    .barcode-svg path, .barcode-svg rect {
+      shape-rendering: crispEdges;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #111827;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 3px;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .live-pulse {
+      animation: pulse-ring 1.5s infinite ease-in-out;
+    }
+    @keyframes flash-text {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .live-flash {
+      animation: flash-text 1s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans pb-32">
+
+  <!-- Flashing Live Stream Banner Alert -->
+  <div id="twitch-live-banner" class="hidden bg-gradient-to-r from-[#0000FF] via-indigo-900 to-slate-900 border-b border-[#5CFF5C]/40 px-4 py-2.5 shadow-lg relative overflow-hidden z-20">
+    <div class="max-w-3xl mx-auto flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="relative flex h-3 w-3 flex-shrink-0">
+          <span class="live-pulse absolute inline-flex h-full w-full rounded-full bg-[#5CFF5C]"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-[#5CFF5C]"></span>
+        </span>
+        <div class="text-xs sm:text-sm font-bold tracking-wide truncate live-flash">
+          <span class="text-[#5CFF5C] font-extrabold uppercase mr-1">LIVE NOW:</span>
+          <span id="stream-title" class="text-white">Broadcasting on Twitch</span>
+        </div>
+      </div>
+      <a href="https://twitch.tv/silverfrailTTV" target="_blank" rel="noopener noreferrer" class="flex-shrink-0 bg-[#5CFF5C] text-black hover:bg-white text-xs font-black uppercase px-3 py-1 rounded-full flex items-center gap-1 shadow-md transition-all active:scale-95">
+        <span>Watch</span>
+        <i data-lucide="external-link" class="w-3 h-3"></i>
+      </a>
+    </div>
+  </div>
+
+  <!-- Combined Header & Camera Action Bar -->
+  <header class="bg-panelBg border-b border-borderColor px-3 py-2.5 sticky top-0 z-10 shadow-lg">
+    <div class="max-w-3xl mx-auto flex items-center justify-between gap-2">
+      
+      <!-- Left Side: Gear Settings + Add Code -->
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <button id="settings-btn" class="h-11 px-3 text-slate-300 hover:text-white bg-cardBg hover:bg-borderColor rounded-xl border border-borderColor flex items-center justify-center transition-all active:scale-95" title="Settings & Options">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+        <button id="add-code-btn" class="h-11 bg-[#5CFF5C] hover:bg-emerald-300 active:scale-95 text-black font-extrabold px-3.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all">
+          <i data-lucide="plus" class="w-4 h-4 stroke-[3]"></i>
+          <span>Add Code</span>
+        </button>
+      </div>
+
+      <!-- Center Top Bar: Simple / Advanced Mode Toggle Switch -->
+      <button id="header-mode-toggle-btn" class="h-11 bg-cardBg hover:bg-borderColor border border-borderColor rounded-xl px-3 flex items-center gap-2 text-xs font-bold text-slate-200 transition-all active:scale-95 flex-shrink-0" title="Toggle Simple / Advanced Mode">
+        <i id="header-mode-icon" data-lucide="sliders" class="w-4 h-4 text-[#5CFF5C]"></i>
+        <span id="header-mode-label">Simple</span>
+      </button>
+
+      <!-- Right Side: Integrated Scan Camera Button -->
+      <button id="camera-scan-btn" class="h-11 bg-cardBg hover:bg-borderColor border border-[#5CFF5C]/40 hover:border-[#5CFF5C] rounded-xl px-3 flex items-center justify-end gap-2.5 transition-all active:scale-[0.98] group shadow-sm w-36 sm:w-48 flex-shrink-0">
+        <div class="text-right truncate">
+          <div class="font-extrabold text-white text-xs sm:text-sm flex items-center justify-end gap-1 truncate">
+            <span class="text-[9px] bg-[#5CFF5C]/20 text-[#5CFF5C] px-1 py-0.2 rounded font-mono border border-[#5CFF5C]/30 hidden sm:inline">Camera</span>
+            <span>Scan</span>
+          </div>
+          <div class="text-[10px] text-slate-400 truncate">Auto-read</div>
+        </div>
+        <div class="p-1.5 bg-[#0000FF]/30 border border-[#0000FF]/60 rounded-lg text-[#5CFF5C] group-hover:bg-[#5CFF5C] group-hover:text-black transition-colors flex-shrink-0">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+        </div>
+      </button>
+
+    </div>
+
+    <!-- Hidden Settings Drawer -->
+    <div id="settings-menu" class="hidden max-w-3xl mx-auto mt-3 pt-3 border-t border-borderColor flex flex-col gap-3">
+      
+      <!-- Custom Category Manager -->
+      <div class="bg-darkBg/60 p-3 rounded-xl border border-borderColor">
+        <label class="block text-[10px] font-bold text-[#5CFF5C] uppercase tracking-wider mb-1">Manage Categories (Comma Separated)</label>
+        <div class="flex gap-1.5">
+          <input type="text" id="setting-categories-input" class="bg-panelBg border border-borderColor rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#5CFF5C] flex-1">
+          <button id="save-categories-btn" class="bg-[#0000FF] text-white font-bold text-xs px-3 py-1.5 rounded-lg border border-blue-500 hover:bg-blue-700 transition-all">Save</button>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <button id="export-backup-btn" class="bg-cardBg hover:bg-borderColor text-slate-200 text-xs py-2 px-3 rounded-lg border border-borderColor flex items-center justify-center gap-1.5 font-medium transition-all">
+          <i data-lucide="download" class="w-3.5 h-3.5 text-[#5CFF5C]"></i>
+          <span>Export Backup</span>
+        </button>
+        <button id="import-backup-btn" class="bg-cardBg hover:bg-borderColor text-slate-200 text-xs py-2 px-3 rounded-lg border border-borderColor flex items-center justify-center gap-1.5 font-medium transition-all">
+          <i data-lucide="upload" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span>Import Backup</span>
+        </button>
+        <input type="file" id="import-file-input" accept=".json" class="hidden">
+        
+        <button id="clear-category-btn" class="bg-cardBg hover:bg-rose-950/40 text-rose-300 text-xs py-2 px-3 rounded-lg border border-rose-900/50 flex items-center justify-center gap-1.5 font-medium transition-all">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          <span>Clear Category</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 max-w-3xl w-full mx-auto p-3 sm:p-4 flex flex-col gap-3">
+
+    <!-- Top Row: Category Filter Pills (Advanced Mode Only) -->
+    <div id="category-pills-container" class="flex gap-1.5 overflow-x-auto pb-1 font-medium text-xs w-full"></div>
+
+    <!-- Middle Row: Search Input, Select Mode Button & View Mode Toggle Bar -->
+    <div class="flex gap-2 items-center w-full">
+      <!-- Search Input -->
+      <div class="relative flex-1 w-full">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="text" id="search-input" placeholder="Search codes by name or value..." class="w-full bg-panelBg border border-borderColor rounded-xl pl-9 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#5CFF5C]">
+      </div>
+
+      <!-- Multi-Select Mode Toggle Button (Advanced Mode Only) -->
+      <button id="select-mode-btn" class="bg-panelBg hover:bg-cardBg text-slate-300 hover:text-white px-3 py-2.5 rounded-xl border border-borderColor flex items-center gap-1.5 transition-all flex-shrink-0 text-xs font-bold h-10" title="Select Multiple Items">
+        <i id="select-mode-icon" data-lucide="check-square" class="w-4 h-4"></i>
+        <span id="select-mode-label">Select</span>
+      </button>
+
+      <!-- List / Grid View Toggle Button (Advanced Mode Only) -->
+      <button id="view-mode-btn" class="bg-panelBg hover:bg-cardBg text-slate-300 hover:text-white p-2.5 rounded-xl border border-borderColor flex items-center justify-center transition-all flex-shrink-0 h-10 w-10" title="Toggle List / Grid View">
+        <i id="view-mode-icon" data-lucide="layout-grid" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Counter & Sort Indicator -->
+    <div class="flex justify-between items-center px-1 text-xs text-slate-400 font-medium">
+      <div class="flex items-center gap-1.5">
+        <span id="coupon-count" class="font-mono bg-cardBg text-[#5CFF5C] px-2 py-0.5 rounded-full border border-borderColor">0 Saved</span>
+        <span id="active-filter-label" class="text-slate-500">Showing All</span>
+      </div>
+      <div id="pinned-notice-indicator" class="flex items-center gap-1 text-[11px] text-slate-500">
+        <i data-lucide="pin" class="w-3 h-3 text-[#5CFF5C]"></i>
+        <span>Pinned codes anchor to top</span>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="hidden flex-col items-center justify-center py-12 text-center text-slate-500 bg-panelBg/50 rounded-2xl border border-borderColor">
+      <i data-lucide="barcode" class="w-12 h-12 mb-3 text-slate-600 stroke-[1.5]"></i>
+      <p class="text-base font-semibold text-slate-300">No matching items found</p>
+      <p class="text-xs text-slate-500 mt-1 max-w-xs">Scan a code with your camera or manually add a new entry.</p>
+    </div>
+
+    <!-- Coupon Grid / List Container -->
+    <div id="coupon-grid" class="grid grid-cols-1 gap-3"></div>
+
+  </main>
+
+  <!-- Optimized 2-Row Floating Batch Action Bar (Appears in Advanced Multi-Select Mode) -->
+  <div id="batch-action-bar" class="fixed bottom-0 left-0 right-0 bg-panelBg/95 backdrop-blur-md border-t border-borderColor px-4 py-3 z-30 hidden shadow-2xl transition-all">
+    <div class="max-w-3xl mx-auto flex flex-col gap-2.5">
+      
+      <!-- Top Row: Full Action Buttons (Export, Move, Delete) -->
+      <div class="grid grid-cols-3 gap-2 w-full">
+        <button id="batch-export-btn" class="bg-cardBg hover:bg-borderColor text-slate-200 text-xs py-2.5 px-2 rounded-xl border border-borderColor flex items-center justify-center gap-1.5 font-bold transition-all active:scale-95">
+          <i data-lucide="download" class="w-4 h-4 text-[#5CFF5C]"></i>
+          <span>Export</span>
+        </button>
+        <button id="batch-move-btn" class="bg-cardBg hover:bg-borderColor text-slate-200 text-xs py-2.5 px-2 rounded-xl border border-borderColor flex items-center justify-center gap-1.5 font-bold transition-all active:scale-95">
+          <i data-lucide="folder-input" class="w-4 h-4 text-blue-400"></i>
+          <span>Move</span>
+        </button>
+        <button id="batch-delete-btn" class="bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs py-2.5 px-2 rounded-xl border border-rose-800/80 flex items-center justify-center gap-1.5 font-bold transition-all active:scale-95">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span>Delete</span>
+        </button>
+      </div>
+
+      <!-- Bottom Row: Counter on Left, Done Button on Right -->
+      <div class="flex items-center justify-between pt-1 border-t border-borderColor/50">
+        <div class="text-xs font-bold text-white flex items-center gap-2">
+          <span id="selected-count-badge" class="bg-[#5CFF5C] text-black font-mono px-2.5 py-0.5 rounded-full text-xs font-black">0</span>
+          <span class="text-slate-300">Selected</span>
+        </div>
+
+        <button id="batch-done-btn" class="bg-[#0000FF] hover:bg-blue-700 text-white text-xs py-1.5 px-4 rounded-xl border border-blue-500 font-extrabold transition-all active:scale-95">
+          Done
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Interactive Move Category Modal Picker -->
+  <div id="move-category-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-panelBg border border-borderColor w-full max-w-sm rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="folder-input" class="w-4 h-4 text-blue-400"></i>
+          <span>Move to Category</span>
+        </h3>
+        <button id="close-move-modal-btn" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400">Select a category below to instantly move selected item(s):</p>
+
+      <div id="move-category-options" class="flex flex-col gap-2 max-h-60 overflow-y-auto"></div>
+
+      <div class="border-t border-borderColor/60 pt-3 mt-1">
+        <label class="block text-[10px] font-bold text-[#5CFF5C] uppercase tracking-wider mb-1.5">+ Or Add New Category</label>
+        <div class="flex gap-1.5">
+          <input type="text" id="new-category-input" placeholder="New Category Name..." class="bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#5CFF5C] flex-1">
+          <button id="add-move-category-btn" class="bg-[#0000FF] text-white font-bold text-xs px-3 py-2 rounded-xl border border-blue-500 hover:bg-blue-700 transition-all active:scale-95">Add & Move</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Clear Category Modal Picker -->
+  <div id="clear-category-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-panelBg border border-borderColor w-full max-w-sm rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-rose-400 flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span>Clear Entire Category</span>
+        </h3>
+        <button id="close-clear-modal-btn" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400">Select a category below to wipe all items inside it. Other categories will remain safe:</p>
+
+      <div id="clear-category-options" class="flex flex-col gap-2 max-h-60 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Display Modal (For Scanning at Register) -->
+  <div id="display-modal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-50 hidden flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto">
+    <!-- Top Action Bar -->
+    <div class="w-full max-w-md flex justify-between items-center">
+      <div class="flex items-center gap-1.5 text-xs font-mono text-[#5CFF5C]">
+        <i data-lucide="shield-check" class="w-4 h-4"></i>
+        <span>MAX CONTRAST MODE</span>
+      </div>
+      <button id="close-display-top-btn" class="text-slate-300 hover:text-white bg-cardBg p-2 rounded-full border border-borderColor active:scale-95 transition-all">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+    </div>
+
+    <!-- High-Contrast Target Box -->
+    <div class="w-full max-w-md bg-white text-slate-900 rounded-3xl p-6 shadow-2xl flex flex-col items-center my-auto border-4 border-[#0000FF]">
+      
+      <div class="flex justify-between items-start w-full mb-2">
+        <span id="display-category-badge" class="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300 uppercase">CATEGORY</span>
+        <span id="display-expiration-badge" class="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-300 uppercase">NO EXPIRATION</span>
+      </div>
+
+      <h3 id="display-title" class="text-2xl font-black text-center text-slate-900 mb-1 leading-tight">Code Title</h3>
+      <p id="display-format" class="text-xs font-mono text-slate-500 uppercase tracking-widest mb-4">CODE 128</p>
+      
+      <!-- Resizable / Zoomable Barcode Container -->
+      <div id="barcode-zoom-container" class="w-full bg-white border-2 border-slate-300 p-4 rounded-2xl flex items-center justify-center min-h-[170px] cursor-zoom-in transition-all relative group">
+        <svg id="display-barcode-svg" class="max-w-full h-auto max-h-52"></svg>
+        <div id="display-qrcode-div" class="hidden flex items-center justify-center"></div>
+        <div class="absolute bottom-1 right-2 text-[9px] text-slate-400 font-sans group-hover:text-slate-600 flex items-center gap-0.5">
+          <i data-lucide="maximize-2" class="w-3 h-3"></i>
+          <span>Tap to toggle size</span>
+        </div>
+      </div>
+
+      <div id="display-code-text" class="text-xl font-mono font-black tracking-widest mt-4 text-slate-900 bg-slate-100 px-4 py-1.5 rounded-xl border border-slate-300">
+        123456789
+      </div>
+      
+      <div class="text-[11px] text-slate-500 mt-4 flex items-center gap-1.5">
+        <i data-lucide="sun" class="w-4 h-4 text-amber-500"></i>
+        <span class="font-medium">Turn phone screen brightness to 100%</span>
+      </div>
+    </div>
+
+    <!-- Bottom Actions -->
+    <div class="w-full max-w-md flex gap-2">
+      <button id="share-btn" class="bg-cardBg text-slate-200 hover:text-white border border-borderColor font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95">
+        <i data-lucide="share-2" class="w-5 h-5 text-[#5CFF5C]"></i>
+      </button>
+      <button id="display-done-btn" class="flex-1 bg-[#0000FF] hover:bg-blue-700 text-white font-extrabold py-3.5 rounded-xl border border-blue-500 active:scale-95 transition-all shadow-lg text-base">
+        Done
+      </button>
+    </div>
+  </div>
+
+  <!-- Camera Scanner Modal -->
+  <div id="scanner-modal" class="fixed inset-0 bg-black z-50 hidden flex-col p-4">
+    <div class="flex justify-between items-center mb-4 max-w-md mx-auto w-full">
+      <h3 class="text-lg font-bold flex items-center gap-2 text-white">
+        <i data-lucide="scan" class="w-5 h-5 text-[#5CFF5C]"></i>
+        <span>Scan Barcode</span>
+      </h3>
+      <button id="close-scanner-btn" class="text-slate-300 hover:text-white bg-cardBg p-2 rounded-full border border-borderColor">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full">
+      <div id="reader" class="w-full rounded-2xl overflow-hidden bg-panelBg border-2 border-[#0000FF] shadow-2xl"></div>
+      <p class="text-xs text-slate-400 mt-4 text-center px-4">
+        Hold camera steady over any barcode or QR code to auto-read.
+      </p>
+    </div>
+  </div>
+
+  <!-- Add / Edit Modal with Native Color Wheel Picker -->
+  <div id="add-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-panelBg border border-borderColor w-full max-w-md rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center">
+        <h3 id="form-modal-title" class="text-lg font-bold text-white">Add New Code</h3>
+        <button id="close-form-top-btn" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="coupon-form" class="flex flex-col gap-3">
+        <input type="hidden" id="coupon-id">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Name / Description</label>
+          <input type="text" id="coupon-title" required placeholder="e.g., 20% Off Storewide" class="w-full bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#5CFF5C]">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Barcode Value / Numbers</label>
+          <input type="text" id="coupon-code" required placeholder="e.g., 0123456789" class="w-full bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#5CFF5C]">
+        </div>
+
+        <!-- Custom Interactive Color Wheel Picker Button (Advanced Mode Only) -->
+        <div id="advanced-color-field">
+          <label class="block text-xs font-semibold text-slate-300 uppercase mb-1.5">Card Color Accent</label>
+          <div class="flex items-center gap-3 bg-darkBg border border-borderColor p-2 rounded-xl">
+            <!-- Circular Swatch triggering native Color Wheel -->
+            <div class="relative w-9 h-9 flex-shrink-0">
+              <div id="color-wheel-preview" class="w-full h-full rounded-xl border-2 border-white/80 shadow-md transition-all" style="background-color: #5CFF5C;"></div>
+              <input type="color" id="coupon-color" value="#5CFF5C" class="absolute inset-0 opacity-0 w-full h-full cursor-pointer">
+            </div>
+            
+            <div class="flex-1 min-w-0">
+              <div class="text-xs font-bold text-white flex items-center gap-1">
+                <i data-lucide="palette" class="w-3.5 h-3.5 text-[#5CFF5C]"></i>
+                <span>Tap color wheel to customize</span>
+              </div>
+              <div id="color-hex-display" class="text-[10px] font-mono text-slate-400 uppercase">#5CFF5C</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Category</label>
+            <select id="coupon-category" class="w-full bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#5CFF5C]"></select>
+          </div>
+
+          <div id="advanced-format-field">
+            <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Format Type</label>
+            <select id="coupon-format" class="w-full bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#5CFF5C]">
+              <option value="CODE128">Standard (Code 128)</option>
+              <option value="UPC">Retail UPC</option>
+              <option value="EAN13">EAN-13</option>
+              <option value="CODE39">Code 39</option>
+              <option value="QR">QR Code</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="advanced-expiration-field">
+          <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Expiration Date (Optional)</label>
+          <input type="date" id="coupon-expiration" class="w-full bg-darkBg border border-borderColor rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#5CFF5C]">
+        </div>
+
+        <div class="flex gap-2 mt-2">
+          <button type="button" id="form-cancel-btn" class="flex-1 bg-cardBg text-slate-300 font-medium py-2.5 rounded-xl text-sm hover:bg-borderColor transition-all">Cancel</button>
+          <button type="submit" class="flex-1 bg-[#5CFF5C] text-black font-extrabold py-2.5 rounded-xl text-sm hover:bg-emerald-300 transition-all">Save Code</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // State Management
+    let categories = JSON.parse(localStorage.getItem('app_categories') || '["Coupons", "Rentals", "Personal"]');
+    let coupons = JSON.parse(localStorage.getItem('work_coupons') || '[]');
+    let appMode = localStorage.getItem('app_mode') || 'simple'; // 'simple' or 'advanced'
+    let activeCategory = 'ALL';
+    let viewMode = localStorage.getItem('app_view_mode') || 'list'; // 'list' or 'grid'
+    let isSelectMode = false;
+    let selectedIds = new Set();
+    let html5QrcodeScanner = null;
+    let isBarcodeZoomed = false;
+    let twitchCheckInterval = null;
+
+    if (coupons.length === 0) {
+      coupons = [
+        { id: '1', title: '20% Off Storewide', code: '20OFF2026', category: 'Coupons', format: 'CODE128', pinned: true, color: '#5CFF5C' },
+        { id: '2', title: '$10 Manager Special', code: '012345678905', category: 'Coupons', format: 'UPC', pinned: false, color: '#3b82f6' }
+      ];
+      localStorage.setItem('work_coupons', JSON.stringify(coupons));
+    }
+
+    // Attach Event Listeners on DOM Load (Bypassing CSP inline onclick restrictions)
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('settings-btn').addEventListener('click', toggleSettingsMenu);
+      document.getElementById('add-code-btn').addEventListener('click', () => openAddModal());
+      document.getElementById('header-mode-toggle-btn').addEventListener('click', toggleAppMode);
+      document.getElementById('camera-scan-btn').addEventListener('click', openScanner);
+      
+      document.getElementById('save-categories-btn').addEventListener('click', saveCustomCategories);
+      document.getElementById('export-backup-btn').addEventListener('click', exportData);
+      document.getElementById('import-backup-btn').addEventListener('click', triggerImport);
+      document.getElementById('import-file-input').addEventListener('change', importData);
+      document.getElementById('clear-category-btn').addEventListener('click', openClearCategoryModal);
+      
+      document.getElementById('select-mode-btn').addEventListener('click', toggleSelectMode);
+      document.getElementById('view-mode-btn').addEventListener('click', toggleViewMode);
+      
+      document.getElementById('batch-export-btn').addEventListener('click', batchExport);
+      document.getElementById('batch-move-btn').addEventListener('click', openMoveCategoryModal);
+      document.getElementById('batch-delete-btn').addEventListener('click', batchDelete);
+      document.getElementById('batch-done-btn').addEventListener('click', toggleSelectMode);
+      
+      document.getElementById('close-move-modal-btn').addEventListener('click', closeMoveCategoryModal);
+      document.getElementById('add-move-category-btn').addEventListener('click', createAndMoveCategory);
+      
+      document.getElementById('close-clear-modal-btn').addEventListener('click', closeClearCategoryModal);
+      
+      document.getElementById('close-display-top-btn').addEventListener('click', closeDisplayModal);
+      document.getElementById('barcode-zoom-container').addEventListener('click', toggleBarcodeZoom);
+      document.getElementById('display-done-btn').addEventListener('click', closeDisplayModal);
+      
+      document.getElementById('close-scanner-btn').addEventListener('click', closeScanner);
+      
+      document.getElementById('close-form-top-btn').addEventListener('click', closeAddModal);
+      document.getElementById('form-cancel-btn').addEventListener('click', closeAddModal);
+      document.getElementById('coupon-form').addEventListener('submit', handleFormSubmit);
+
+      document.getElementById('search-input').addEventListener('input', renderCoupons);
+      document.getElementById('coupon-color').addEventListener('input', (e) => updateColorWheelPreview(e.target.value));
+      document.getElementById('coupon-color').addEventListener('change', (e) => updateColorWheelPreview(e.target.value));
+
+      initSettingsUI();
+      initViewModeUI();
+      applyAppModeUI();
+      renderCategoryFilters();
+      renderFormCategoryDropdown();
+      lucide.createIcons();
+      renderCoupons();
+      checkTwitchStatus();
+      
+      twitchCheckInterval = setInterval(checkTwitchStatus, 180000);
+    });
+
+    function toggleAppMode() {
+      appMode = appMode === 'simple' ? 'advanced' : 'simple';
+      localStorage.setItem('app_mode', appMode);
+      if (appMode === 'simple' && isSelectMode) {
+        toggleSelectMode();
+      }
+      applyAppModeUI();
+      renderCoupons();
+    }
+
+    function applyAppModeUI() {
+      const modeLabel = document.getElementById('header-mode-label');
+      const modeBtn = document.getElementById('header-mode-toggle-btn');
+      const pillsContainer = document.getElementById('category-pills-container');
+      const selectModeBtn = document.getElementById('select-mode-btn');
+      const viewModeBtn = document.getElementById('view-mode-btn');
+      const pinnedNotice = document.getElementById('pinned-notice-indicator');
+      
+      const advColorField = document.getElementById('advanced-color-field');
+      const advFormatField = document.getElementById('advanced-format-field');
+      const advExpField = document.getElementById('advanced-expiration-field');
+
+      if (appMode === 'simple') {
+        modeLabel.innerText = 'Simple';
+        modeBtn.className = 'h-11 bg-cardBg hover:bg-borderColor border border-borderColor rounded-xl px-3 flex items-center gap-2 text-xs font-bold text-slate-200 transition-all active:scale-95 flex-shrink-0';
+        pillsContainer.classList.add('hidden');
+        selectModeBtn.classList.add('hidden');
+        viewModeBtn.classList.add('hidden');
+        pinnedNotice.classList.add('hidden');
+
+        advColorField.classList.add('hidden');
+        advFormatField.classList.add('hidden');
+        advExpField.classList.add('hidden');
+      } else {
+        modeLabel.innerText = 'Advanced';
+        modeBtn.className = 'h-11 bg-[#5CFF5C]/10 hover:bg-[#5CFF5C]/20 border border-[#5CFF5C] rounded-xl px-3 flex items-center gap-2 text-xs font-bold text-[#5CFF5C] transition-all active:scale-95 flex-shrink-0';
+        pillsContainer.classList.remove('hidden');
+        selectModeBtn.classList.remove('hidden');
+        viewModeBtn.classList.remove('hidden');
+        pinnedNotice.classList.remove('hidden');
+
+        advColorField.classList.remove('hidden');
+        advFormatField.classList.remove('hidden');
+        advExpField.classList.remove('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    function initSettingsUI() {
+      document.getElementById('setting-categories-input').value = categories.join(', ');
+    }
+
+    function initViewModeUI() {
+      const gridContainer = document.getElementById('coupon-grid');
+      const icon = document.getElementById('view-mode-icon');
+      if (viewMode === 'grid') {
+        gridContainer.className = 'grid grid-cols-2 sm:grid-cols-3 gap-3';
+        icon.setAttribute('data-lucide', 'list');
+      } else {
+        gridContainer.className = 'grid grid-cols-1 gap-3';
+        icon.setAttribute('data-lucide', 'layout-grid');
+      }
+    }
+
+    function toggleViewMode() {
+      viewMode = viewMode === 'list' ? 'grid' : 'list';
+      localStorage.setItem('app_view_mode', viewMode);
+      initViewModeUI();
+      lucide.createIcons();
+      renderCoupons();
+    }
+
+    function toggleSelectMode() {
+      if (appMode === 'simple') return;
+
+      isSelectMode = !isSelectMode;
+      selectedIds.clear();
+      
+      const btn = document.getElementById('select-mode-btn');
+      const actionBar = document.getElementById('batch-action-bar');
+      
+      if (isSelectMode) {
+        btn.className = 'bg-[#5CFF5C]/10 text-[#5CFF5C] px-3 py-2.5 rounded-xl border border-[#5CFF5C] flex items-center gap-1.5 transition-all flex-shrink-0 text-xs font-bold h-10';
+        actionBar.classList.remove('hidden');
+      } else {
+        btn.className = 'bg-panelBg hover:bg-cardBg text-slate-300 hover:text-white px-3 py-2.5 rounded-xl border border-borderColor flex items-center gap-1.5 transition-all flex-shrink-0 text-xs font-bold h-10';
+        actionBar.classList.add('hidden');
+      }
+      updateBatchCounter();
+      renderCoupons();
+    }
+
+    function handleCardClick(coupon) {
+      if (isSelectMode) {
+        if (selectedIds.has(coupon.id)) {
+          selectedIds.delete(coupon.id);
+        } else {
+          selectedIds.add(coupon.id);
+        }
+        updateBatchCounter();
+        renderCoupons();
+      } else {
+        openDisplayModal(coupon);
+      }
+    }
+
+    function updateBatchCounter() {
+      document.getElementById('selected-count-badge').innerText = selectedIds.size;
+    }
+
+    function updateColorWheelPreview(hexColor) {
+      document.getElementById('color-wheel-preview').style.backgroundColor = hexColor;
+      document.getElementById('color-wheel-preview').style.boxShadow = `0 0 10px ${hexColor}80`;
+      document.getElementById('color-hex-display').innerText = hexColor.toUpperCase();
+    }
+
+    function saveCustomCategories() {
+      const rawInput = document.getElementById('setting-categories-input').value;
+      const parsed = rawInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      if (parsed.length > 0) {
+        categories = parsed;
+        localStorage.setItem('app_categories', JSON.stringify(categories));
+        renderCategoryFilters();
+        renderFormCategoryDropdown();
+        renderCoupons();
+        alert('Categories updated!');
+      }
+    }
+
+    function renderCategoryFilters() {
+      const container = document.getElementById('category-pills-container');
+      container.innerHTML = '';
+
+      const allBtn = document.createElement('button');
+      allBtn.addEventListener('click', () => setCategoryFilter('ALL'));
+      allBtn.id = 'cat-btn-ALL';
+      allBtn.className = activeCategory === 'ALL'
+        ? 'cat-filter-btn px-3 py-2 rounded-xl border border-[#5CFF5C] bg-[#5CFF5C]/10 text-[#5CFF5C] font-bold transition-all whitespace-nowrap'
+        : 'cat-filter-btn px-3 py-2 rounded-xl border border-borderColor bg-panelBg text-slate-400 hover:text-white transition-all whitespace-nowrap';
+      allBtn.innerText = 'All';
+      container.appendChild(allBtn);
+
+      categories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.addEventListener('click', () => setCategoryFilter(cat));
+        btn.id = `cat-btn-${cat.replace(/\s+/g, '_')}`;
+        btn.className = activeCategory === cat
+          ? 'cat-filter-btn px-3 py-2 rounded-xl border border-[#5CFF5C] bg-[#5CFF5C]/10 text-[#5CFF5C] font-bold transition-all whitespace-nowrap'
+          : 'cat-filter-btn px-3 py-2 rounded-xl border border-borderColor bg-panelBg text-slate-400 hover:text-white transition-all whitespace-nowrap';
+        btn.innerText = cat;
+        container.appendChild(btn);
+      });
+    }
+
+    function renderFormCategoryDropdown() {
+      const select = document.getElementById('coupon-category');
+      select.innerHTML = '';
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.innerText = cat;
+        select.appendChild(opt);
+      });
+    }
+
+    function saveCoupons() {
+      localStorage.setItem('work_coupons', JSON.stringify(coupons));
+      renderCoupons();
+    }
+
+    function toggleSettingsMenu() {
+      const menu = document.getElementById('settings-menu');
+      menu.classList.toggle('hidden');
+    }
+
+    function setCategoryFilter(category) {
+      activeCategory = category;
+      renderCategoryFilters();
+      document.getElementById('active-filter-label').innerText = category === 'ALL' ? 'Showing All' : `Filter: ${category}`;
+      renderCoupons();
+    }
+
+    function getExpirationStatus(dateStr) {
+      if (!dateStr) return { label: 'No Expiration', isExpired: false, isSoon: false };
+      const exp = new Date(dateStr + 'T23:59:59');
+      const now = new Date();
+      const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) return { label: 'EXPIRED', isExpired: true, isSoon: false };
+      if (diffDays === 0) return { label: 'Expires Today', isExpired: false, isSoon: true };
+      if (diffDays <= 3) return { label: `Expires in ${diffDays}d`, isExpired: false, isSoon: true };
+      return { label: `Exp: ${dateStr}`, isExpired: false, isSoon: false };
+    }
+
+    function parseGS1Expiration(decodedText) {
+      if (!decodedText) return null;
+      const ai17Regex = /(?:^|\(\vert{}\x1D)17\)?([0-9]{2})(0[1-2]|1[0-2])(0[1-9]|[12][0-9]|3[01])/;
+      const match = decodedText.match(ai17Regex);
+      if (match) {
+        return `20${match[1]}-${match[2]}-${match[3]}`;
+      }
+      return null;
+    }
+
+    function renderCoupons() {
+      const grid = document.getElementById('coupon-grid');
+      const emptyState = document.getElementById('empty-state');
+      const countEl = document.getElementById('coupon-count');
+      const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+
+      grid.innerHTML = '';
+
+      let filtered = coupons.filter(c => {
+        const matchesCategory = (appMode === 'simple' || activeCategory === 'ALL') || (c.category || categories[0]) === activeCategory;
+        const matchesSearch = c.title.toLowerCase().includes(searchQuery) || c.code.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesSearch;
+      });
+
+      if (appMode === 'advanced') {
+        filtered.sort((a, b) => {
+          if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+          const statusA = getExpirationStatus(a.expiration);
+          const statusB = getExpirationStatus(b.expiration);
+          if (statusA.isExpired !== statusB.isExpired) return statusA.isExpired ? 1 : -1;
+          return 0;
+        });
+      }
+
+      countEl.innerText = `${filtered.length} Saved`;
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+        emptyState.classList.add('flex');
+      } else {
+        emptyState.classList.add('hidden');
+        emptyState.classList.remove('flex');
+      }
+
+      filtered.forEach(coupon => {
+        const expStatus = getExpirationStatus(coupon.expiration);
+        const isSelected = selectedIds.has(coupon.id);
+        const cardColor = (appMode === 'advanced' && coupon.color) ? coupon.color : '#5CFF5C';
+        const card = document.createElement('div');
+        
+        let borderClass = 'border-borderColor';
+        if (isSelected) borderClass = 'border-[#5CFF5C] bg-[#5CFF5C]/10 ring-2 ring-[#5CFF5C]/50';
+        else if (appMode === 'advanced' && coupon.pinned) borderClass = 'border-[#5CFF5C]/60 bg-panelBg';
+        else if (appMode === 'advanced' && expStatus.isExpired) borderClass = 'border-rose-900/60 bg-rose-950/10 opacity-70';
+        else if (appMode === 'advanced' && expStatus.isSoon) borderClass = 'border-amber-500/60';
+
+        card.className = `bg-cardBg border ${borderClass} rounded-2xl p-3.5 flex flex-col justify-between hover:border-slate-500 transition-all cursor-pointer group shadow-sm relative overflow-hidden`;
+        
+        if (appMode === 'advanced') {
+          card.style.borderLeftWidth = '4px';
+          card.style.borderLeftColor = cardColor;
+        }
+        
+        card.addEventListener('click', () => handleCardClick(coupon));
+
+        const selectionCheckboxHtml = (isSelectMode && appMode === 'advanced') ? `
+          <div class="absolute top-3 right-3 w-5 h-5 rounded-lg border-2 ${isSelected ? 'bg-[#5CFF5C] border-[#5CFF5C] text-black' : 'border-borderColor bg-darkBg'} flex items-center justify-center transition-all z-10">
+            ${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+          </div>
+        ` : '';
+
+        if (viewMode === 'grid' && appMode === 'advanced') {
+          card.innerHTML = `
+            ${selectionCheckboxHtml}
+            <div>
+              <div class="flex items-center gap-1.5 mb-1 min-w-0 pr-6">
+                ${coupon.pinned ? '<i data-lucide="pin" class="w-3.5 h-3.5 text-[#5CFF5C] flex-shrink-0 fill-[#5CFF5C]"></i>' : ''}
+                <h3 class="font-bold text-white text-sm truncate w-full group-hover:text-[#5CFF5C] transition-colors">${coupon.title}</h3>
+              </div>
+
+              <div class="flex justify-between items-center mb-2 gap-1">
+                <span class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-darkBg border uppercase truncate max-w-[80px]" style="color: ${cardColor}; border-color: ${cardColor}40;">
+                  ${coupon.category || categories[0]}
+                </span>
+
+                ${!isSelectMode ? `
+                  <div class="flex items-center gap-0.5 flex-shrink-0 action-buttons-group" data-id="${coupon.id}">
+                    <button class="text-slate-400 hover:text-[#5CFF5C] p-1 pin-btn" title="Pin to top">
+                      <i data-lucide="pin" class="w-3.5 h-3.5 ${coupon.pinned ? 'text-[#5CFF5C]' : ''}"></i>
+                    </button>
+                    <button class="text-slate-400 hover:text-white p-1 edit-btn" title="Edit">
+                      <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button class="text-slate-400 hover:text-rose-400 p-1 delete-btn" title="Delete">
+                      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="bg-darkBg border border-borderColor/60 rounded-xl p-1.5 flex items-center justify-center my-1 min-h-[50px]">
+              <svg id="preview-svg-${coupon.id}" class="max-h-10 max-w-full"></svg>
+              <div id="preview-qr-${coupon.id}" class="hidden"></div>
+            </div>
+
+            <div class="flex justify-between items-center text-[11px] font-mono text-slate-400 mt-1">
+              <span class="truncate tracking-wider">${coupon.code}</span>
+              <span class="text-[9px] text-slate-500 uppercase ml-1">${coupon.format}</span>
+            </div>
+          `;
+        } else {
+          card.innerHTML = `
+            ${selectionCheckboxHtml}
+            <div>
+              <div class="flex justify-between items-start gap-2 mb-1.5 pr-6">
+                <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                  ${(appMode === 'advanced' && coupon.pinned) ? '<i data-lucide="pin" class="w-3.5 h-3.5 text-[#5CFF5C] flex-shrink-0 fill-[#5CFF5C]"></i>' : ''}
+                  <h3 class="font-bold text-white text-base truncate group-hover:text-[#5CFF5C] transition-colors">${coupon.title}</h3>
+                </div>
+                ${(!isSelectMode || appMode === 'simple') ? `
+                  <div class="flex gap-1 flex-shrink-0 action-buttons-group" data-id="${coupon.id}">
+                    ${appMode === 'advanced' ? `
+                      <button class="text-slate-400 hover:text-[#5CFF5C] p-1 pin-btn" title="Pin to top">
+                        <i data-lucide="pin" class="w-3.5 h-3.5 ${coupon.pinned ? 'text-[#5CFF5C]' : ''}"></i>
+                      </button>
+                    ` : ''}
+                    <button class="text-slate-400 hover:text-white p-1 edit-btn" title="Edit">
+                      <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button class="text-slate-400 hover:text-rose-400 p-1 delete-btn" title="Delete">
+                      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+
+              ${appMode === 'advanced' ? `
+                <div class="flex items-center gap-1.5 mb-2">
+                  <span class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-darkBg border uppercase" style="color: ${cardColor}; border-color:${cardColor}40;">
+                    ${coupon.category \vert{}\vert{} categories[0]} </span>${coupon.expiration ? `
+                    <span class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${expStatus.isExpired ? 'bg-rose-950 text-rose-400 border border-rose-800' : (expStatus.isSoon ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-darkBg text-slate-400 border border-borderColor')}">
+                      ${expStatus.label}
+                    </span>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="bg-darkBg border border-borderColor/60 rounded-xl p-2 flex items-center justify-center my-1.5 min-h-[55px]">
+              <svg id="preview-svg-${coupon.id}" class="max-h-12 max-w-full"></svg>
+              <div id="preview-qr-${coupon.id}" class="hidden"></div>
+            </div>
+
+            <div class="flex justify-between items-center text-xs font-mono text-slate-400 mt-1">
+              <span class="truncate tracking-wider">${coupon.code}</span>
+              ${appMode === 'advanced' ? `<span class="text-[10px] text-slate-500 uppercase">${coupon.format}</span>` : ''}
+            </div>
+          `;
+        }
+
+        // Attach listeners for card action buttons
+        const actionGroup = card.querySelector('.action-buttons-group');
+        if (actionGroup) {
+          actionGroup.addEventListener('click', (e) => e.stopPropagation());
+          const pinBtn = actionGroup.querySelector('.pin-btn');
+          const editBtn = actionGroup.querySelector('.edit-btn');
+          const deleteBtn = actionGroup.querySelector('.delete-btn');
+
+          if (pinBtn) pinBtn.addEventListener('click', () => togglePin(coupon.id));
+          if (editBtn) editBtn.addEventListener('click', () => editCoupon(coupon.id));
+          if (deleteBtn) deleteBtn.addEventListener('click', () => deleteCoupon(coupon.id));
+        }
+
+        grid.appendChild(card);
+
+        setTimeout(() => {
+          renderBarcodeToElement(`preview-svg-${coupon.id}`, `preview-qr-${coupon.id}`, coupon.code, coupon.format, cardColor);
+        }, 0);
+      });
+
+      lucide.createIcons();
+    }
+
+    function renderBarcodeToElement(svgId, qrDivId, code, format, accentColor = "#5CFF5C") {
+      const svgEl = document.getElementById(svgId);
+      const qrDiv = document.getElementById(qrDivId);
+
+      if (!svgEl || !qrDiv) return;
+
+      if (format === 'QR') {
+        svgEl.classList.add('hidden');
+        qrDiv.classList.remove('hidden');
+        qrDiv.innerHTML = '';
+        new QRCode(qrDiv, {
+          text: code,
+          width: 48,
+          height: 48,
+          colorDark: accentColor,
+          colorLight: "#090d16"
+        });
+      } else {
+        qrDiv.classList.add('hidden');
+        svgEl.classList.remove('hidden');
+        try {
+          JsBarcode(`#${svgId}`, code, {
+            format: format === 'UPC' ? 'UPC' : (format === 'EAN13' ? 'EAN13' : 'CODE128'),
+            lineColor: accentColor,
+            background: "transparent",
+            width: 2,
+            height: 38,
+            displayValue: false,
+            margin: 0
+          });
+        } catch (e) {
+          JsBarcode(`#${svgId}`, code, {
+            format: "CODE128",
+            lineColor: accentColor,
+            background: "transparent",
+            width: 2,
+            height: 38,
+            displayValue: false,
+            margin: 0
+          });
+        }
+      }
+    }
+
+    function openDisplayModal(coupon) {
+      document.getElementById('display-title').innerText = coupon.title;
+      document.getElementById('display-format').innerText = coupon.format;
+      document.getElementById('display-code-text').innerText = coupon.code;
+      document.getElementById('display-category-badge').innerText = coupon.category || categories[0];
+
+      const expStatus = getExpirationStatus(coupon.expiration);
+      const expBadge = document.getElementById('display-expiration-badge');
+      expBadge.innerText = expStatus.label;
+      expBadge.className = `text-[10px] font-bold font-mono px-2 py-0.5 rounded uppercase border ${expStatus.isExpired ? 'bg-rose-100 text-rose-700 border-rose-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`;
+
+      const svgEl = document.getElementById('display-barcode-svg');
+      const qrDiv = document.getElementById('display-qrcode-div');
+
+      if (coupon.format === 'QR') {
+        svgEl.classList.add('hidden');
+        qrDiv.classList.remove('hidden');
+        qrDiv.innerHTML = '';
+        new QRCode(qrDiv, {
+          text: coupon.code,
+          width: 220,
+          height: 220,
+          colorDark: "#000000",
+          colorLight: "#ffffff"
+        });
+      } else {
+        qrDiv.classList.add('hidden');
+        svgEl.classList.remove('hidden');
+        try {
+          JsBarcode("#display-barcode-svg", coupon.code, {
+            format: coupon.format === 'UPC' ? 'UPC' : (coupon.format === 'EAN13' ? 'EAN13' : 'CODE128'),
+            lineColor: "#000000",
+            background: "#ffffff",
+            width: 3,
+            height: 100,
+            displayValue: false,
+            margin: 10
+          });
+        } catch (e) {
+          JsBarcode("#display-barcode-svg", coupon.code, {
+            format: "CODE128",
+            lineColor: "#000000",
+            background: "#ffffff",
+            width: 3,
+            height: 100,
+            displayValue: false,
+            margin: 10
+          });
+        }
+      }
+
+      const shareBtn = document.getElementById('share-btn');
+      shareBtn.onclick = () => {
+        if (navigator.share) {
+          navigator.share({
+            title: coupon.title,
+            text: `GC Code: ${coupon.title} (${coupon.code})`
+          }).catch(() => {});
+        } else {
+          navigator.clipboard.writeText(coupon.code);
+          alert('Code copied to clipboard!');
+        }
+      };
+
+      document.getElementById('display-modal').classList.remove('hidden');
+      document.getElementById('display-modal').classList.add('flex');
+    }
+
+    function toggleBarcodeZoom() {
+      const container = document.getElementById('barcode-zoom-container');
+      isBarcodeZoomed = !isBarcodeZoomed;
+      if (isBarcodeZoomed) {
+        container.classList.add('scale-110', 'z-10');
+      } else {
+        container.classList.remove('scale-110', 'z-10');
+      }
+    }
+
+    function closeDisplayModal() {
+      isBarcodeZoomed = false;
+      const container = document.getElementById('barcode-zoom-container');
+      if (container) container.classList.remove('scale-110', 'z-10');
+      document.getElementById('display-modal').classList.add('hidden');
+      document.getElementById('display-modal').classList.remove('flex');
+    }
+
+    function togglePin(id) {
+      const coupon = coupons.find(c => c.id === id);
+      if (coupon) {
+        coupon.pinned = !coupon.pinned;
+        saveCoupons();
+      }
+    }
+
+    function openScanner() {
+      document.getElementById('scanner-modal').classList.remove('hidden');
+      document.getElementById('scanner-modal').classList.add('flex');
+
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      
+      const config = { 
+        fps: 10, 
+        qrbox: { width: 250, height: 150 },
+        aspectRatio: 1.0
+      };
+
+      html5QrcodeScanner.start(
+        { facingMode: "environment" }, 
+        config, 
+        (decodedText, decodedResult) => {
+          let detectedFormat = 'CODE128';
+          if (decodedResult?.result?.format?.formatName) {
+            const fmt = decodedResult.result.format.formatName;
+            if (fmt.includes('UPC')) detectedFormat = 'UPC';
+            else if (fmt.includes('EAN')) detectedFormat = 'EAN13';
+            else if (fmt.includes('QR')) detectedFormat = 'QR';
+          }
+
+          const autoParsedExpDate = parseGS1Expiration(decodedText);
+          
+          closeScanner();
+          openAddModal({
+            title: 'Scanned Code',
+            code: decodedText,
+            format: detectedFormat,
+            category: categories[0] || 'Coupons',
+            expiration: autoParsedExpDate || '',
+            color: '#5CFF5C'
+          });
+        },
+        () => {}
+      ).catch(err => {
+        alert("Camera permission denied or camera unavailable.");
+        closeScanner();
+      });
+    }
+
+    function closeScanner() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          html5QrcodeScanner.clear();
+          html5QrcodeScanner = null;
+        }).catch(err => console.error(err));
+      }
+      document.getElementById('scanner-modal').classList.add('hidden');
+      document.getElementById('scanner-modal').classList.remove('flex');
+    }
+
+    function openAddModal(data = null) {
+      document.getElementById('coupon-id').value = data?.id || '';
+      document.getElementById('coupon-title').value = data?.title || '';
+      document.getElementById('coupon-code').value = data?.code || '';
+      document.getElementById('coupon-category').value = data?.category || categories[0] || 'Coupons';
+      document.getElementById('coupon-format').value = data?.format || 'CODE128';
+      document.getElementById('coupon-expiration').value = data?.expiration || '';
+      
+      const cardColor = data?.color || '#5CFF5C';
+      document.getElementById('coupon-color').value = cardColor;
+      updateColorWheelPreview(cardColor);
+
+      document.getElementById('form-modal-title').innerText = data?.id ? 'Edit Code' : 'Add New Code';
+
+      document.getElementById('add-modal').classList.remove('hidden');
+      document.getElementById('add-modal').classList.add('flex');
+    }
+
+    function closeAddModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+      document.getElementById('add-modal').classList.remove('flex');
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('coupon-id').value || Date.now().toString();
+      const title = document.getElementById('coupon-title').value;
+      const code = document.getElementById('coupon-code').value;
+      const category = document.getElementById('coupon-category').value;
+      const format = document.getElementById('coupon-format').value;
+      const expiration = document.getElementById('coupon-expiration').value;
+      const color = document.getElementById('coupon-color').value || '#5CFF5C';
+
+      const existingIndex = coupons.findIndex(c => c.id === id);
+      const pinned = existingIndex >= 0 ? coupons[existingIndex].pinned : false;
+
+      const updatedCoupon = { id, title, code, category, format, expiration, color, pinned };
+
+      if (existingIndex >= 0) {
+        coupons[existingIndex] = updatedCoupon;
+      } else {
+        coupons.push(updatedCoupon);
+      }
+
+      saveCoupons();
+      closeAddModal();
+    }
+
+    function editCoupon(id) {
+      const coupon = coupons.find(c => c.id === id);
+      if (coupon) openAddModal(coupon);
+    }
+
+    function deleteCoupon(id) {
+      if (confirm('Are you sure you want to delete this item?')) {
+        coupons = coupons.filter(c => c.id !== id);
+        saveCoupons();
+      }
+    }
+
+    // Batch Actions & Category Selection Pickers
+    function batchDelete() {
+      if (selectedIds.size === 0) {
+        alert('No items selected.');
+        return;
+      }
+      if (confirm(`Are you sure you want to delete ${selectedIds.size} selected item(s)?`)) {
+        coupons = coupons.filter(c => !selectedIds.has(c.id));
+        selectedIds.clear();
+        toggleSelectMode();
+        saveCoupons();
+      }
+    }
+
+    function openMoveCategoryModal() {
+      if (selectedIds.size === 0) {
+        alert('No items selected.');
+        return;
+      }
+      const container = document.getElementById('move-category-options');
+      container.innerHTML = '';
+
+      categories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.addEventListener('click', () => executeCategoryMove(cat));
+        btn.className = 'w-full bg-cardBg hover:bg-borderColor text-white text-xs font-bold py-2.5 px-3 rounded-xl border border-borderColor flex items-center justify-between transition-all active:scale-98';
+        btn.innerHTML = `
+          <span>${cat}</span>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        `;
+        container.appendChild(btn);
+      });
+
+      document.getElementById('new-category-input').value = '';
+      document.getElementById('move-category-modal').classList.remove('hidden');
+      document.getElementById('move-category-modal').classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeMoveCategoryModal() {
+      document.getElementById('move-category-modal').classList.add('hidden');
+      document.getElementById('move-category-modal').classList.remove('flex');
+    }
+
+    function executeCategoryMove(targetCat) {
+      coupons.forEach(c => {
+        if (selectedIds.has(c.id)) {
+          c.category = targetCat;
+        }
+      });
+      selectedIds.clear();
+      closeMoveCategoryModal();
+      toggleSelectMode();
+      saveCoupons();
+    }
+
+    function createAndMoveCategory() {
+      const newCatInput = document.getElementById('new-category-input').value.trim();
+      if (!newCatInput) return;
+
+      if (!categories.includes(newCatInput)) {
+        categories.push(newCatInput);
+        localStorage.setItem('app_categories', JSON.stringify(categories));
+        renderCategoryFilters();
+        renderFormCategoryDropdown();
+      }
+
+      executeCategoryMove(newCatInput);
+    }
+
+    function openClearCategoryModal() {
+      const container = document.getElementById('clear-category-options');
+      container.innerHTML = '';
+
+      categories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.addEventListener('click', () => executeCategoryClear(cat));
+        btn.className = 'w-full bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold py-2.5 px-3 rounded-xl border border-rose-900/60 flex items-center justify-between transition-all active:scale-98';
+        btn.innerHTML = `
+          <span>Clear "${cat}"</span>
+          <i data-lucide="trash-2" class="w-4 h-4 text-rose-400"></i>
+        `;
+        container.appendChild(btn);
+      });
+
+      document.getElementById('clear-category-modal').classList.remove('hidden');
+      document.getElementById('clear-category-modal').classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeClearCategoryModal() {
+      document.getElementById('clear-category-modal').classList.add('hidden');
+      document.getElementById('clear-category-modal').classList.remove('flex');
+    }
+
+    function executeCategoryClear(targetCat) {
+      if (confirm(`WARNING: This will delete ALL saved codes inside "${targetCat}". Other categories will remain safe. Continue?`)) {
+        coupons = coupons.filter(c => (c.category || categories[0]) !== targetCat);
+        saveCoupons();
+        closeClearCategoryModal();
+        alert(`Cleared all codes in category: ${targetCat}`);
+      }
+    }
+
+    function batchExport() {
+      if (selectedIds.size === 0) {
+        alert('No items selected.');
+        return;
+      }
+      const selectedCoupons = coupons.filter(c => selectedIds.has(c.id));
+      const exportObject = {
+        categories,
+        coupons: selectedCoupons
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `gc_codes_selected_backup_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function exportData() {
+      const exportObject = {
+        categories,
+        coupons
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `gc_codes_backup_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function triggerImport() {
+      document.getElementById('import-file-input').click();
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            coupons = imported;
+          } else if (typeof imported === 'object') {
+            if (imported.categories) {
+              categories = imported.categories;
+              localStorage.setItem('app_categories', JSON.stringify(categories));
+            }
+            if (imported.coupons) {
+              coupons = imported.coupons;
+            }
+          }
+          saveCoupons();
+          initSettingsUI();
+          renderCategoryFilters();
+          renderFormCategoryDropdown();
+          alert('Backup imported successfully!');
+        } catch (err) {
+          alert('Error parsing JSON backup file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    async function checkTwitchStatus() {
+      const banner = document.getElementById('twitch-live-banner');
+      const titleEl = document.getElementById('stream-title');
+      
+      try {
+        const res = await fetch('https://decapi.me/twitch/uptime/silverfrailTTV');
+        const text = await res.text();
+
+        const isOffline = !text || text.includes('offline') || text.includes('not found') || text.includes('Channel') || text.length > 35;
+
+        if (!isOffline) {
+          titleEl.innerText = `silverfrailTTV is Live! (${text})`;
+          banner.classList.remove('hidden');
+        } else {
+          banner.classList.add('hidden');
+        }
+      } catch (err) {
+        banner.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
